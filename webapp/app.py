@@ -662,12 +662,14 @@ def get_option_explanations(question):
 _DOMAIN_META_BY_ID = None
 _KNOWLEDGE_SOURCE_BY_ID = None
 _SOURCE_TEXT_INDEX = None
+_SOURCE_TEXT_BY_PATH = {}
 
 EXCERPT_KEYS = (
     'source_excerpt', 'source_quote', 'source_paragraph', 'original_text',
     'evidence_text', 'excerpt', 'quote', 'paragraph'
 )
-SOURCE_SNIPPET_MAX_CHARS = 180
+SOURCE_SNIPPET_MAX_CHARS = 420
+SOURCE_TEXT_REMOVE_TERMS = ('\u961a\u5168\u7a0b',)
 
 def _as_list(value):
     if value is None or value == '':
@@ -682,6 +684,8 @@ def _clean_source_text(value):
     if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, str):
+        for term in SOURCE_TEXT_REMOVE_TERMS:
+            value = value.replace(term, '')
         return re.sub(r'\s+', ' ', value).strip()
     return ''
 
@@ -693,6 +697,45 @@ def _dedupe(values):
             seen.add(value)
             result.append(value)
     return result
+
+def _is_source_line_noise(text):
+    text = _clean_source_text(text)
+    if not text:
+        return True
+    if text.startswith('|') or re.fullmatch(r'[\d\s.、-]+', text):
+        return True
+    if '第' in text[:5] and '章' in text[:8]:
+        return True
+    return False
+
+def _trim_source_snippet(text):
+    text = _clean_source_text(text)
+    if len(text) > SOURCE_SNIPPET_MAX_CHARS:
+        return text[:SOURCE_SNIPPET_MAX_CHARS].rstrip() + '...'
+    return text
+
+def _source_context_snippet(entry, entries):
+    if not entry:
+        return ''
+    same_path = _SOURCE_TEXT_BY_PATH.get(entry.get('path')) or [
+        item for item in entries if item.get('path') == entry.get('path')
+    ]
+    idx = next((i for i, item in enumerate(same_path) if item.get('line') == entry.get('line')), -1)
+    if idx < 0:
+        return _trim_source_snippet(entry.get('text', ''))
+
+    selected = []
+    for item in same_path[max(0, idx - 1):idx + 1]:
+        text = item.get('text', '')
+        if not _is_source_line_noise(text):
+            selected.append(text)
+    for item in same_path[idx + 1:idx + 8]:
+        if len(_clean_source_text(' '.join(selected))) >= SOURCE_SNIPPET_MAX_CHARS:
+            break
+        text = item.get('text', '')
+        if not _is_source_line_noise(text):
+            selected.append(text)
+    return _trim_source_snippet(' '.join(selected))
 
 def _load_domain_meta():
     global _DOMAIN_META_BY_ID
@@ -914,7 +957,7 @@ def _find_source_file(base_path, file_name):
     return ''
 
 def _load_source_text_index():
-    global _SOURCE_TEXT_INDEX
+    global _SOURCE_TEXT_INDEX, _SOURCE_TEXT_BY_PATH
     if _SOURCE_TEXT_INDEX is not None:
         return _SOURCE_TEXT_INDEX
 
@@ -958,7 +1001,14 @@ def _load_source_text_index():
         except OSError:
             continue
 
+    by_path = {}
+    for entry in entries:
+        by_path.setdefault(entry.get('path'), []).append(entry)
+    for path in by_path:
+        by_path[path].sort(key=lambda item: item.get('line', 0))
+
     _SOURCE_TEXT_INDEX = entries
+    _SOURCE_TEXT_BY_PATH = by_path
     return entries
 
 def _core_textbook_entries():
@@ -1002,9 +1052,7 @@ def _chapter_fallback_excerpt(question):
             continue
         if '第' in text[:5] and '章' in text[:8]:
             continue
-        snippet = text[:SOURCE_SNIPPET_MAX_CHARS].rstrip()
-        if len(text) > SOURCE_SNIPPET_MAX_CHARS:
-            snippet += '...'
+        snippet = _source_context_snippet(entry, entries)
         return f"{start['file']} 第{entry['line']}行：{snippet}"
     return ''
 
@@ -1089,9 +1137,7 @@ def _find_source_excerpt(question):
 
     if not best or best_score < 8:
         return _chapter_fallback_excerpt(question)
-    snippet = best['text']
-    if len(snippet) > SOURCE_SNIPPET_MAX_CHARS:
-        snippet = snippet[:SOURCE_SNIPPET_MAX_CHARS].rstrip() + '...'
+    snippet = _source_context_snippet(best, index)
     return f"{best['file']} 第{best['line']}行：{snippet}"
 
 def format_source(question):
