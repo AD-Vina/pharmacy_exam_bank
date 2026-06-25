@@ -118,10 +118,6 @@
         {% if source_text %}
           <p><strong>来源：</strong>{{ source_text }}</p>
         {% endif %}
-        {% set source_excerpt = get_source_excerpt(q) %}
-        {% if source_excerpt %}
-          <p><strong>原文短摘：</strong>{{ source_excerpt }}</p>
-        {% endif %}
       </div>
     {% endif %}
   </article>
