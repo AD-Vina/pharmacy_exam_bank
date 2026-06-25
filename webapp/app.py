@@ -480,6 +480,12 @@ def security_before_request():
     if endpoint in {'static', 'healthz', 'robots_txt'}:
         return None
 
+    if LOCAL_AUTO_LOGIN:
+        if not current_user.is_authenticated:
+            login_user(get_or_create_local_user())
+        if endpoint in {'login', 'guest_login', 'share_gate'}:
+            return redirect(url_for('index'))
+
     if SECURITY_ENABLED:
         ua = request.headers.get('User-Agent', '')
         if not ua or BOT_UA_PATTERNS.search(ua):
@@ -496,11 +502,6 @@ def security_before_request():
     if require_share_gate() and endpoint != 'share_gate':
         return redirect(url_for('share_gate', next=request.full_path if request.query_string else request.path))
 
-    if LOCAL_AUTO_LOGIN:
-        if not current_user.is_authenticated:
-            login_user(get_or_create_local_user())
-        if endpoint in {'login', 'guest_login'}:
-            return redirect(url_for('index'))
     return None
 
 @app.after_request
