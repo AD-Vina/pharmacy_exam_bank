@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}登录{% endblock %}
+{% block content %}
+<section class="login-layout">
+  <div class="login-copy">
+    <p class="eyebrow">高级职称备考</p>
+    <h1>西药学题库训练平台</h1>
+    <p>支持电脑和手机刷题、模拟考试、错题收藏、答案解析和来源查看。</p>
+  </div>
+  <div class="login-box">
+    <h2>账号登录</h2>
+    <form method="post" action="{{ url_for('login') }}">
+      <div class="form-group">
+        <label>用户名</label>
+        <input type="text" name="username" required autofocus autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input type="password" name="password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-primary btn-block">登录系统</button>
+    </form>
+    <form method="post" action="{{ url_for('guest_login') }}">
+      <button type="submit" class="btn-secondary btn-block">游客开始做题</button>
+    </form>
+    <div class="login-hint">
+      <p>分享给别人时，建议让对方点击“游客开始做题”。</p>
+      <div class="credential-row"><span>演示账号</span><code>demo / Demo@12345</code></div>
+    </div>
+  </div>
+</section>
+{% endblock %}

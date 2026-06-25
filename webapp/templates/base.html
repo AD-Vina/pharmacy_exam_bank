@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}西药学副高级考试系统{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-brand">
+    <a href="{{ url_for('index') }}">
+      <span class="brand-mark">药</span>
+      <span class="brand-text">西药学副高级考试系统</span>
+    </a>
+  </div>
+  <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="菜单">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <div class="nav-links">
+    {% if current_user.is_authenticated %}
+      <a href="{{ url_for('index') }}">首页</a>
+      <a href="{{ url_for('browse') }}">题库浏览</a>
+      <a href="{{ url_for('practice') }}">随机练习</a>
+      <a href="{{ url_for('exam') }}">模拟考试</a>
+      <a href="{{ url_for('bookmarks') }}?kind=mistake">错题本</a>
+      <a href="{{ url_for('bookmarks') }}?kind=favorite">收藏</a>
+      {% if not local_auto_login %}
+        <span class="nav-user">{{ current_user.username }}</span>
+        <a href="{{ url_for('logout') }}" class="btn-logout">退出</a>
+      {% endif %}
+    {% else %}
+      <a href="{{ url_for('login') }}">登录</a>
+    {% endif %}
+  </div>
+</nav>
+<main class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="footer">
+  <p>西药学副高级考试题库 · 学习训练与模拟测评</p>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

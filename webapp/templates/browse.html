@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}题库浏览{% endblock %}
+{% block content %}
+<section class="page-head compact-head">
+  <div>
+    <p class="eyebrow">Question Bank</p>
+    <h1>题库浏览</h1>
+    <p>按题型、来源、知识领域或关键词筛选题目。</p>
+  </div>
+</section>
+
+<div class="filters">
+  <form method="get" action="{{ url_for('browse') }}" class="filter-form">
+    <label>题型</label>
+    <select name="type">
+      <option value="">全部</option>
+      {% for t, label in type_labels.items() %}
+        <option value="{{ t }}" {{ 'selected' if qtype==t else '' }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <label>来源</label>
+    <select name="source_type">
+      <option value="">全部</option>
+      {% for key, label in source_type_labels.items() %}
+        <option value="{{ key }}" {{ 'selected' if source_type==key else '' }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <label>领域</label>
+    <select name="domain">
+      <option value="">全部</option>
+      {% for d in domains %}
+        <option value="{{ d }}" {{ 'selected' if domain==d else '' }}>{{ domain_labels[d] if d in domain_labels else d }}</option>
+      {% endfor %}
+    </select>
+    <label>关键词</label>
+    <input type="text" name="keyword" value="{{ keyword }}" placeholder="搜索题干或选项">
+    <button type="submit" class="btn-secondary">筛选</button>
+    <a href="{{ url_for('browse') }}" class="btn-link">重置</a>
+  </form>
+</div>
+
+<p class="list-count">共 {{ total }} 题，当前显示 {{ questions|length }} 题。</p>
+
+{% if not questions %}
+  <div class="empty-state-box">
+    <p class="empty-state">未找到符合条件的题目。</p>
+    <a href="{{ url_for('browse') }}" class="btn-secondary">重置筛选</a>
+  </div>
+{% else %}
+<div class="question-list">
+  {% for q in questions %}
+    <div class="question-item">
+      <div class="meta">
+        <span class="badge">{{ type_labels.get(q.type, q.type) }}</span>
+        <span>{{ domain_labels[q.domain] if q.domain in domain_labels else q.domain }}</span>
+        <span>{{ source_type_labels.get(question_source_type(q), question_source_type(q)) }}</span>
+        <span class="difficulty">难度 {{ q.difficulty }}</span>
+      </div>
+      <div class="stem">
+        {% if q.type == 'A2' or q.type == 'A3/A4' or q.type == 'CASE' %}
+          <p class="scenario">{{ q.content.scenario }}</p>
+        {% endif %}
+        {% if q.type == 'B1' %}
+          <p>{{ q.content['items'][0].stem }} ...（共 {{ q.content['items']|length }} 小问）</p>
+        {% else %}
+          <p>{{ q.content.stem }}</p>
+        {% endif %}
+      </div>
+      <div class="actions">
+        <a href="{{ url_for('practice_question', qid=q.id) }}" class="btn-small">练习此题</a>
+        <a href="{{ url_for('toggle_bookmark', qid=q.id) }}" class="btn-small btn-small-ghost" onclick="event.preventDefault();toggleBookmark('{{ q.id }}', 'favorite')">收藏</a>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+    <a class="btn-small" href="{{ url_for('browse', type=qtype, source_type=source_type, domain=domain, keyword=keyword, page=page-1) }}">上一页</a>
+  {% endif %}
+  <span class="page-info">第 {{ page }} / {{ total_pages }} 页</span>
+  {% if page < total_pages %}
+    <a class="btn-small" href="{{ url_for('browse', type=qtype, source_type=source_type, domain=domain, keyword=keyword, page=page+1) }}">下一页</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleBookmark(qid, kind) {
+  const form = new FormData();
+  form.append('kind', kind);
+  fetch('/bookmark/' + qid, {method: 'POST', body: form})
+    .then(r => r.json())
+    .then(data => {
+      alert(data.status === 'added' ? '已收藏' : '已取消收藏');
+    });
+}
+</script>
+{% endblock %}

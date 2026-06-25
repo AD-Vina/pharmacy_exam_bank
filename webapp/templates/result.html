@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}答题结果{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Result</p>
+    <h1>{{ '模拟考试结果' if mode == 'exam' else '练习结果' }}</h1>
+    <p class="score-line">得分 <strong>{{ score }}</strong><span>/ {{ total }}</span></p>
+  </div>
+  {% if type_breakdown %}
+  <div class="breakdown-row">
+    {% for b in type_breakdown %}
+    <div class="breakdown-chip">
+      <span class="breakdown-label">{{ b.type }}</span>
+      <span class="breakdown-bar"><span class="breakdown-fill" style="width:{{ b.pct }}%"></span></span>
+      <span class="breakdown-pct">{{ b.pct }}%</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+{% if domain_breakdown %}
+<section class="card">
+  <h3>知识领域正确率</h3>
+  <div class="domain-breakdown">
+    {% for b in domain_breakdown %}
+    <div class="domain-row">
+      <span class="domain-name">{{ domain_labels[b.domain] if b.domain in domain_labels else b.domain }}</span>
+      <span class="domain-bar-wrap"><span class="domain-bar" style="width:{{ b.pct }}%"></span></span>
+      <span class="domain-pct">{{ b.pct }}% ({{ b.score }}/{{ b.total }})</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% for item in results %}
+  {% set q = item.question %}
+  <article class="question-card result-card {{ 'correct' if item.score > 0 else 'wrong' }}">
+    <div class="meta">
+      <span class="badge">{{ type_labels.get(q.type, q.type) }}</span>
+      <span>{{ q.id }}</span>
+      <span>{{ domain_labels[q.domain] if q.domain in domain_labels else q.domain }}{% if q.subdomain %} · {{ q.subdomain }}{% endif %}</span>
+      <span class="result-tag {{ 'correct' if item.score > 0 else 'wrong' }}">{{ '正确' if item.score > 0 else '错误' }}</span>
+      <span>得分 {{ item.score }}</span>
+    </div>
+
+    {% if q.type == 'A2' or q.type == 'A3/A4' or q.type == 'CASE' %}
+      <div class="scenario-box">{{ q.content.scenario }}</div>
+    {% endif %}
+
+    {% if q.type == 'B1' %}
+      <p class="stem"><strong>B1 配伍题</strong></p>
+      <ol class="option-list">
+        {% for opt in q.content['shared_options'] %}
+          <li><strong>{{ get_letter(loop.index0) }}.</strong> {{ opt }}</li>
+        {% endfor %}
+      </ol>
+      {% for sub in q.content['items'] %}
+        {% set sub_idx = loop.index0 %}
+        <div class="sub-question">
+          <p><strong>{{ sub.n }}.</strong> {{ sub.stem }}</p>
+          <div class="ans-row">
+            <div>
+              <span class="ans-label">你的答案</span>
+              <span class="{{ 'ans-wrong' if not (item.user_answer and sub_idx < item.user_answer|length and answers_match(item.user_answer[sub_idx], q.answer.correct[sub_idx])) else 'ans-right' }}">
+                {{ format_answer_labels(item.user_answer[sub_idx]) if item.user_answer and sub_idx < item.user_answer|length else '未作答' }}
+              </span>
+            </div>
+            <div>
+              <span class="ans-label">正确答案</span>
+              <span class="ans-right">{{ format_answer_with_text(q, q.answer.correct[sub_idx]) }}</span>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="stem"><strong>{{ q.content.stem }}</strong></p>
+      <ol class="option-list">
+        {% for opt in q.content['options'] %}
+          <li><strong>{{ get_letter(loop.index0) }}.</strong> {{ opt }}</li>
+        {% endfor %}
+      </ol>
+      <div class="ans-row">
+        <div>
+          <span class="ans-label">你的答案</span>
+          <span class="{{ 'ans-wrong' if not answers_match(item.user_answer, q.answer.correct) else 'ans-right' }}">
+            {{ format_answer_labels(item.user_answer) if item.user_answer else '未作答' }}
+          </span>
+        </div>
+        <div>
+          <span class="ans-label">正确答案</span>
+          <span class="ans-right">{{ format_answer_with_text(q, q.answer.correct) }}</span>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if q.explanation %}
+      <div class="explanation">
+        <h3>解析</h3>
+        {% if q.explanation.correct_reason %}
+          <p>{{ q.explanation.correct_reason }}</p>
+        {% endif %}
+        {% if q.explanation.key_point %}
+          <p><strong>考点：</strong>{{ q.explanation.key_point }}</p>
+        {% endif %}
+        {% set option_explanations = get_option_explanations(q) %}
+        {% if option_explanations %}
+          <p><strong>选项解析：</strong></p>
+          <ul class="wrong-reasons">
+            {% for reason in option_explanations %}
+              <li><strong>{{ get_letter(reason.option) }}.</strong> {{ reason.text }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        {% set source_text = format_source(q) %}
+        {% if source_text %}
+          <p><strong>来源：</strong>{{ source_text }}</p>
+        {% endif %}
+        {% set source_excerpt = get_source_excerpt(q) %}
+        {% if source_excerpt %}
+          <p><strong>原文短摘：</strong>{{ source_excerpt }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </article>
+{% endfor %}
+
+<div class="actions-bar">
+  <a class="btn-primary" href="{{ url_for('practice') }}">继续练习</a>
+  <a class="btn-secondary" href="{{ url_for('exam') }}">再来一套</a>
+  <a class="btn-secondary" href="{{ url_for('bookmarks') }}?kind=mistake">查看错题</a>
+  <a class="btn-secondary" href="{{ url_for('index') }}">返回首页</a>
+</div>
+{% endblock %}

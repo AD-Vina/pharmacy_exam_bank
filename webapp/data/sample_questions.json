@@ -1,0 +1,76 @@
+[
+  {
+    "id": "SAMPLE_A1_001",
+    "type": "A1",
+    "domain": "PHARMACY_SERVICE",
+    "subdomain": "用药教育",
+    "source_type": "other",
+    "content": {
+      "stem": "药师进行用药教育时，最适合作为确认患者已经理解用药方法的做法是",
+      "options": [
+        "只把说明书交给患者自行阅读",
+        "请患者复述关键用法并演示给药步骤",
+        "尽量使用专业术语提高准确性",
+        "只告知药品名称和每日总量",
+        "把所有风险一次性快速说明"
+      ]
+    },
+    "answer": {"correct": [1]},
+    "explanation": {
+      "correct_reason": "让患者复述和演示可以直接验证其理解程度，比单向告知更可靠。",
+      "key_point": "用药教育需要确认理解，而不是只完成告知。",
+      "option_analysis": [
+        {"option": 0, "text": "不能确认患者是否理解。"},
+        {"option": 1, "text": "正确。复述和演示可用于确认理解。"},
+        {"option": 2, "text": "专业术语可能降低可理解性。"},
+        {"option": 3, "text": "信息不足。"},
+        {"option": 4, "text": "风险沟通应清晰分层。"}
+      ]
+    }
+  },
+  {
+    "id": "SAMPLE_A2_001",
+    "type": "A2",
+    "domain": "SVC_SAFETY",
+    "subdomain": "用药安全",
+    "source_type": "other",
+    "content": {
+      "scenario": "患者，男，72岁，长期服用多种慢病药物。近期新增一种可能导致头晕的药物后，自述夜间起床时差点跌倒。",
+      "stem": "药师首先应优先关注的问题是",
+      "options": [
+        "是否需要立即停止所有慢病药物",
+        "是否存在与新药相关的跌倒风险及用药时机问题",
+        "是否需要把所有药物改为饭前服用",
+        "是否只需增加补钙药物",
+        "是否可以忽略偶发头晕"
+      ]
+    },
+    "answer": {"correct": [1]},
+    "explanation": {
+      "correct_reason": "老年患者新增用药后出现头晕和跌倒先兆，应优先评估药物相关风险、给药时间和监测方案。",
+      "key_point": "老年多重用药管理要关注跌倒、低血压、镇静等安全风险。"
+    }
+  },
+  {
+    "id": "SAMPLE_X_001",
+    "type": "X",
+    "domain": "PHARMACOECONOMICS",
+    "subdomain": "评价方法",
+    "source_type": "other",
+    "content": {
+      "stem": "开展药物经济学评价时，通常需要明确的内容包括",
+      "options": [
+        "研究视角",
+        "成本范围",
+        "结局指标",
+        "时间范围",
+        "敏感性分析方案"
+      ]
+    },
+    "answer": {"correct": [0, 1, 2, 3, 4]},
+    "explanation": {
+      "correct_reason": "研究视角、成本、结局、时间范围和不确定性分析都会影响评价结论。",
+      "key_point": "药物经济学评价应先明确设计边界，再解释结果。"
+    }
+  }
+]

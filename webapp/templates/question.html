@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'exam' %}模拟考试{% else %}练习{% endif %}{% endblock %}
+{% block content %}
+{% set q = question %}
+
+{% if mode == 'exam' %}
+<div class="timer-bar" id="timer-bar" data-remaining="{{ remaining }}">
+  <div class="timer-inner">
+    <span class="timer-icon">⏱</span>
+    <span class="timer-text" id="timer-text">--:--</span>
+  </div>
+  <div class="timer-progress"><div class="timer-progress-fill" id="timer-progress-fill"></div></div>
+</div>
+
+<div class="progress-nav">
+  {% for qid in qids %}
+    {% set loop_idx = loop.index %}
+    {% set answered = qid in exam_answers and exam_answers[qid] %}
+    <a href="{{ url_for('exam_question', idx=loop.index0) }}"
+       class="progress-dot {{ 'current' if loop_idx == index else '' }} {{ 'answered' if answered else '' }}">
+      {{ loop_idx }}
+    </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="exam-header">
+  {% if mode == 'exam' %}
+    <span class="eyebrow">模拟考试</span>
+    <strong>第 {{ index }} / {{ total }} 题</strong>
+  {% else %}
+    <span class="eyebrow">随机练习</span>
+    <strong>单题训练</strong>
+    {% if domain %}<span class="badge">{{ domain_labels[domain] if domain in domain_labels else domain }}</span>{% endif %}
+  {% endif %}
+  {% if mode == 'practice' %}
+    <button type="button" class="btn-small btn-small-ghost" onclick="toggleBookmark('{{ q.id }}', 'favorite')">收藏</button>
+  {% endif %}
+</div>
+
+<form method="post" action="{% if mode == 'exam' %}{{ url_for('exam_question', idx=index-1) }}{% else %}{{ url_for('submit_practice') }}{% endif %}" id="answer-form">
+  <input type="hidden" name="qid" value="{{ q.id }}">
+  <div class="question-card">
+    <div class="meta">
+      <span class="badge">{{ type_labels.get(q.type, q.type) }}</span>
+      <span>{{ q.id }}</span>
+      <span>{{ domain_labels[q.domain] if q.domain in domain_labels else q.domain }}{% if q.subdomain %} · {{ q.subdomain }}{% endif %}</span>
+    </div>
+
+    {% if q.type == 'A2' or q.type == 'A3/A4' or q.type == 'CASE' %}
+      <div class="scenario-box">
+        <p><strong>病例 / 案例</strong></p>
+        <p>{{ q.content.scenario }}</p>
+        {% if q.content.round_title %}<p class="round-title">{{ q.content.round_title }}</p>{% endif %}
+      </div>
+    {% endif %}
+
+    {% if q.type == 'B1' %}
+      <p class="stem"><strong>配伍题：请为以下各小问选择最合适的选项</strong></p>
+      <div class="shared-options">
+        <p><strong>共用选项：</strong></p>
+        <ol class="option-list">
+        {% for opt in q.content['shared_options'] %}
+            <li><strong>{{ get_letter(loop.index0) }}.</strong> {{ opt }}</li>
+          {% endfor %}
+        </ol>
+      </div>
+      {% for item in q.content['items'] %}
+        {% set sub_idx = loop.index0 %}
+        <div class="sub-question">
+          <p class="stem"><strong>{{ item.n }}.</strong> {{ item.stem }}</p>
+          <div class="options">
+            {% for opt_idx, opt in enumerate(q.content['shared_options']) %}
+              <label class="option-label">
+                <input type="radio" name="answer_{{ sub_idx }}" value="{{ opt_idx }}"
+                  {% if saved and sub_idx < saved|length and opt_idx in saved[sub_idx] %}checked{% endif %}>
+                <strong>{{ get_letter(opt_idx) }}</strong> {{ opt }}
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="stem"><strong>{{ q.content.stem }}</strong></p>
+      <div class="options">
+        {% if q.type == 'X' %}
+          {% for opt_idx, opt in enumerate(q.content['options']) %}
+            <label class="option-label">
+              <input type="checkbox" name="answer" value="{{ opt_idx }}"
+                {% if saved and opt_idx in saved %}checked{% endif %}>
+              <strong>{{ get_letter(opt_idx) }}</strong> {{ opt }}
+            </label>
+          {% endfor %}
+        {% else %}
+          {% for opt_idx, opt in enumerate(q.content['options']) %}
+            <label class="option-label">
+              <input type="radio" name="answer" value="{{ opt_idx }}"
+                {% if saved and saved|length > 0 and opt_idx == saved[0] %}checked{% endif %}>
+              <strong>{{ get_letter(opt_idx) }}</strong> {{ opt }}
+            </label>
+          {% endfor %}
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="actions-bar question-actions">
+    {% if mode == 'exam' %}
+      {% if index > 1 %}
+        <button type="submit" name="jump_idx" value="{{ index-2 }}" class="btn-link">上一题</button>
+      {% endif %}
+      {% if index < total %}
+        <button type="submit" name="action" value="next" class="btn-primary">下一题</button>
+      {% else %}
+        <button type="submit" name="action" value="submit" class="btn-primary">提交试卷</button>
+      {% endif %}
+      <button type="submit" name="action" value="submit" class="btn-secondary">交卷</button>
+    {% else %}
+      <button type="submit" class="btn-primary">提交答案</button>
+      <a href="{{ url_for('practice') }}" class="btn-secondary">下一题（随机）</a>
+      {% if domain %}
+        <a href="{{ url_for('domain_practice', domain=domain) }}" class="btn-secondary">再来一题（同领域）</a>
+      {% endif %}
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleBookmark(qid, kind) {
+  const form = new FormData();
+  form.append('kind', kind);
+  fetch('/bookmark/' + qid, {method: 'POST', body: form})
+    .then(r => r.json())
+    .then(data => {
+      alert(data.status === 'added' ? '已收藏' : '已取消收藏');
+    });
+}
+
+(function(){
+  const bar = document.getElementById('timer-bar');
+  if(!bar) return;
+  let remaining = parseInt(bar.dataset.remaining || '0');
+  const total = {{ duration * 60 if mode == 'exam' else 0 }};
+  const text = document.getElementById('timer-text');
+  const fill = document.getElementById('timer-progress-fill');
+  function fmt(s){
+    const safe = Math.max(0, s);
+    const m = Math.floor(safe / 60), sec = safe % 60;
+    return (m<10?'0':'')+m+':'+(sec<10?'0':'')+sec;
+  }
+  function tick(){
+    remaining--;
+    if(text) text.textContent = fmt(remaining);
+    if(fill && total) fill.style.width = Math.max(0, remaining/total*100) + '%';
+    if(remaining <= 0){
+      alert('考试时间已到，系统将自动交卷。');
+      document.getElementById('answer-form').submit();
+    }
+  }
+  if(text) text.textContent = fmt(remaining);
+  if(fill && total) fill.style.width = (remaining/total*100) + '%';
+  setInterval(tick, 1000);
+})();
+</script>
+{% endblock %}

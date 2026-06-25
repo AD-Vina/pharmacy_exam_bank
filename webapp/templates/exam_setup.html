@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}模拟考试{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Mock Exam</p>
+    <h1>模拟考试</h1>
+    <p>选择题型、题量和时长，系统会从当前题库随机抽题。</p>
+  </div>
+</section>
+
+<div class="card form-card">
+  <h3>组卷设置</h3>
+  <form method="post" action="{{ url_for('exam') }}">
+    <div class="form-group">
+      <label for="type">题型</label>
+      <select id="type" name="type">
+        <option value="all">全部题型</option>
+        {% for key, label in type_labels.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="count">题量</label>
+      <input id="count" type="number" inputmode="numeric" name="count" value="20" min="1" max="95">
+    </div>
+
+    <div class="form-group">
+      <label for="duration">考试时长（分钟）</label>
+      <input id="duration" type="number" inputmode="numeric" name="duration" value="60" min="5" max="180">
+    </div>
+
+    <div class="actions-bar">
+      <button type="submit" class="btn-primary">开始考试</button>
+      <a class="btn-secondary" href="{{ url_for('index') }}">返回首页</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

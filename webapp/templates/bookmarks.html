@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ '我的收藏' if kind == 'favorite' else '错题本' }}{% endblock %}
+{% block content %}
+<section class="page-head compact-head">
+  <div>
+    <p class="eyebrow">My Bookmarks</p>
+    <h1>{{ '我的收藏' if kind == 'favorite' else '错题本' }}</h1>
+    <p>共 {{ total }} 题，适合针对性复习薄弱环节。</p>
+  </div>
+  <div class="head-actions">
+    <a href="{{ url_for('bookmarks', kind='favorite') }}" class="btn-small {{ 'btn-primary' if kind=='favorite' else '' }}">收藏</a>
+    <a href="{{ url_for('bookmarks', kind='mistake') }}" class="btn-small {{ 'btn-primary' if kind=='mistake' else '' }}">错题</a>
+  </div>
+</section>
+
+{% if not questions %}
+  <div class="empty-state-box">
+    <p class="empty-state">暂无{{ '收藏' if kind=='favorite' else '错题' }}记录。</p>
+    <p class="muted">{{ '浏览题目时点击收藏按钮即可添加。' if kind=='favorite' else '完成练习或考试后，系统会自动记录答错的题目。' }}</p>
+    <a href="{{ url_for('browse') }}" class="btn-primary">去题库浏览</a>
+  </div>
+{% else %}
+<div class="question-list">
+  {% for q in questions %}
+    <div class="question-item">
+      <div class="meta">
+        <span class="badge">{{ type_labels.get(q.type, q.type) }}</span>
+        <span>{{ domain_labels[q.domain] if q.domain in domain_labels else q.domain }}</span>
+        <span class="difficulty">难度 {{ q.difficulty }}</span>
+      </div>
+      <div class="stem">
+        {% if q.type == 'A2' or q.type == 'A3/A4' or q.type == 'CASE' %}
+          <p class="scenario">{{ q.content.scenario }}</p>
+        {% endif %}
+        {% if q.type == 'B1' %}
+          <p>{{ q.content['items'][0].stem }} ...（共 {{ q.content['items']|length }} 小问）</p>
+        {% else %}
+          <p>{{ q.content.stem }}</p>
+        {% endif %}
+      </div>
+      <div class="actions">
+        <a href="{{ url_for('practice_question', qid=q.id) }}" class="btn-small">练习此题</a>
+        <a href="{{ url_for('toggle_bookmark', qid=q.id) }}" class="btn-small btn-small-ghost" onclick="event.preventDefault();toggleBookmark('{{ q.id }}', '{{ kind }}')">移除</a>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+    <a class="btn-small" href="{{ url_for('bookmarks', kind=kind, page=page-1) }}">上一页</a>
+  {% endif %}
+  <span class="page-info">第 {{ page }} / {{ total_pages }} 页</span>
+  {% if page < total_pages %}
+    <a class="btn-small" href="{{ url_for('bookmarks', kind=kind, page=page+1) }}">下一页</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleBookmark(qid, kind) {
+  const form = new FormData();
+  form.append('kind', kind);
+  fetch('/bookmark/' + qid, {method: 'POST', body: form})
+    .then(r => r.json())
+    .then(() => {
+      alert('已移除');
+      location.reload();
+    });
+}
+</script>
+{% endblock %}

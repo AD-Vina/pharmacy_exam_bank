@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}首页{% endblock %}
+{% block content %}
+<section class="page-head dashboard-head">
+  <div>
+    <p class="eyebrow">学习工作台</p>
+    <h1>欢迎，{{ current_user.username }}</h1>
+    <p>当前题库共 {{ total }} 题，支持随机练习、专项练习和模拟考试。</p>
+  </div>
+  <div class="head-actions">
+    <a href="{{ url_for('practice') }}" class="btn-primary">开始练习</a>
+    <a href="{{ url_for('exam') }}" class="btn-secondary">模拟考试</a>
+  </div>
+</section>
+
+<div class="dashboard">
+  <section class="card stat-card">
+    <p class="card-label">题库总量</p>
+    <p class="metric">{{ total }}</p>
+    <p class="muted">已导入可训练题目</p>
+  </section>
+
+  <section class="card">
+    <h3>题型分布</h3>
+    <ul class="stat-list">
+      {% for t, c in stats.items() %}
+        <li><span class="badge">{{ type_labels.get(t, t) }}</span><strong>{{ c }}</strong></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="card">
+    <h3>学习数据</h3>
+    <div class="mini-stats">
+      <div class="mini-stat">
+        <span class="mini-value">{{ favorite_count }}</span>
+        <span class="mini-label">收藏</span>
+      </div>
+      <div class="mini-stat">
+        <span class="mini-value">{{ mistake_count }}</span>
+        <span class="mini-label">错题</span>
+      </div>
+    </div>
+    <div class="actions">
+      <a href="{{ url_for('bookmarks') }}?kind=favorite" class="btn-primary">我的收藏</a>
+      <a href="{{ url_for('bookmarks') }}?kind=mistake" class="btn-secondary">错题本</a>
+    </div>
+  </section>
+
+  <section class="card history-card">
+    <h3>最近考试记录</h3>
+    {% if records %}
+      <table class="table">
+        <tr><th>时间</th><th>模式</th><th>得分</th><th>操作</th></tr>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ '模拟考试' if r.mode=='exam' else '练习' }}</td>
+          <td>{{ r.score }}/{{ r.total }}</td>
+          <td><a href="{{ url_for('record_detail', rid=r.id) }}">查看</a></td>
+        </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <div class="empty-state-box">
+        <p class="empty-state">暂无记录。完成一次模拟考试后会显示在这里。</p>
+        <a href="{{ url_for('exam') }}" class="btn-primary">开始模拟考试</a>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card wide-card">
+    <h3>专项练习</h3>
+    {% if domain_groups %}
+      {% for group in domain_groups %}
+        <div class="source-domain-group">
+          <div class="source-domain-head">
+            <h4>{{ group.label }}</h4>
+            <span>{{ group.count }} 题 · {{ group.domains|length }} 类</span>
+          </div>
+          <div class="domain-grid">
+            {% for d in group.domains %}
+              <a href="{{ url_for('domain_practice', domain=d.name) }}" class="domain-chip">
+                <span class="domain-name">{{ d.label }}</span>
+                <span class="domain-count">{{ d.count }} 题</span>
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty-state">暂无领域分类数据。</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

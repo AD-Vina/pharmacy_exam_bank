@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: pharmacy-exam-bank
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    healthCheckPath: /healthz
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOW_GUEST_LOGIN
+        value: "1"
