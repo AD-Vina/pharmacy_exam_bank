@@ -24,9 +24,8 @@ if (!(Test-Path $Python)) {
 if (!$env:PORT) { $env:PORT = "5000" }
 if (!$env:SECRET_KEY) { $env:SECRET_KEY = New-RandomText 48 }
 
-$env:SECURITY_ENABLED = "1"
-$env:ALLOW_GUEST_LOGIN = "1"
 $env:LOCAL_AUTO_LOGIN = "1"
+$env:SECURITY_ENABLED = "0"
 $env:SHARE_ACCESS_CODE = ""
 $env:BIND_HOST = "127.0.0.1"
 
@@ -35,8 +34,7 @@ Write-Host "Pharmacy Exam Bank local server is starting."
 Write-Host "Open on this PC: http://127.0.0.1:$env:PORT"
 Write-Host ""
 Write-Host "No account or password is required."
-Write-Host "Local only: this server is not exposed to phones or other computers."
-Write-Host "Security: local bind, guest isolation, rate limits, noindex, bot UA block, security headers."
+Write-Host "Local only: this server is not exposed to other devices."
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
