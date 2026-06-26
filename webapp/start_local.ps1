@@ -26,7 +26,6 @@ if (!$env:SECRET_KEY) { $env:SECRET_KEY = New-RandomText 48 }
 
 $env:LOCAL_AUTO_LOGIN = "1"
 $env:SECURITY_ENABLED = "0"
-$env:SHARE_ACCESS_CODE = ""
 $env:BIND_HOST = "127.0.0.1"
 
 Write-Host ""

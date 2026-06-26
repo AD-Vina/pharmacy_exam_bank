@@ -5,10 +5,10 @@
   <div class="login-copy">
     <p class="eyebrow">高级职称备考</p>
     <h1>西药学题库训练平台</h1>
-    <p>支持电脑和手机刷题、模拟考试、错题收藏、答案解析和来源查看。</p>
+    <p>用于本机题库练习、模拟考试、错题收藏、答案解析和来源查看。</p>
   </div>
   <div class="login-box">
-    <h2>账号登录</h2>
+    <h2>备用账号登录</h2>
     <form method="post" action="{{ url_for('login') }}">
       <div class="form-group">
         <label>用户名</label>
@@ -20,12 +20,8 @@
       </div>
       <button type="submit" class="btn-primary btn-block">登录系统</button>
     </form>
-    <form method="post" action="{{ url_for('guest_login') }}">
-      <button type="submit" class="btn-secondary btn-block">游客开始做题</button>
-    </form>
     <div class="login-hint">
-      <p>分享给别人时，建议让对方点击“游客开始做题”。</p>
-      <div class="credential-row"><span>演示账号</span><code>demo / Demo@12345</code></div>
+      <p>默认本机运行会自动进入系统；只有关闭 <code>LOCAL_AUTO_LOGIN</code> 后才需要使用账号。</p>
     </div>
   </div>
 </section>

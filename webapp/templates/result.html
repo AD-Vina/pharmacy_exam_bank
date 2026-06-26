@@ -26,7 +26,7 @@
   <div class="domain-breakdown">
     {% for b in domain_breakdown %}
     <div class="domain-row">
-      <span class="domain-name">{{ domain_labels[b.domain] if b.domain in domain_labels else b.domain }}</span>
+      <span class="domain-name">{{ b.label if b.label else (domain_labels[b.domain] if b.domain in domain_labels else b.domain) }}</span>
       <span class="domain-bar-wrap"><span class="domain-bar" style="width:{{ b.pct }}%"></span></span>
       <span class="domain-pct">{{ b.pct }}% ({{ b.score }}/{{ b.total }})</span>
     </div>
@@ -41,6 +41,7 @@
     <div class="meta">
       <span class="badge">{{ type_labels.get(q.type, q.type) }}</span>
       <span>{{ q.id }}</span>
+      <span>{{ source_group_labels.get(question_source_group(q), question_source_group(q)) }}</span>
       <span>{{ domain_labels[q.domain] if q.domain in domain_labels else q.domain }}{% if q.subdomain %} · {{ q.subdomain }}{% endif %}</span>
       <span class="result-tag {{ 'correct' if item.score > 0 else 'wrong' }}">{{ '正确' if item.score > 0 else '错误' }}</span>
       <span>得分 {{ item.score }}</span>

@@ -13,6 +13,20 @@
   <h3>组卷设置</h3>
   <form method="post" action="{{ url_for('exam') }}">
     <div class="form-group">
+      <label>来源</label>
+      <div class="check-grid">
+        {% for group in source_group_options %}
+          <label class="check-pill {{ 'disabled' if group.count == 0 else '' }}">
+            <input type="checkbox" name="source_group" value="{{ group.key }}"
+                   {{ 'disabled' if group.count == 0 else '' }}>
+            {{ group.label }}（{{ group.count }}）
+          </label>
+        {% endfor %}
+      </div>
+      <p class="muted">不选择来源时默认全部可用来源。</p>
+    </div>
+
+    <div class="form-group">
       <label for="type">题型</label>
       <select id="type" name="type">
         <option value="all">全部题型</option>
@@ -20,6 +34,29 @@
           <option value="{{ key }}">{{ label }}</option>
         {% endfor %}
       </select>
+    </div>
+
+    <div class="form-group">
+      <label>专项领域</label>
+      {% for group in domain_groups %}
+        <div class="source-domain-group compact-domain-group">
+          <div class="source-domain-head">
+            <h4>{{ group.label }}</h4>
+            <span>{{ group.count }} 题 · {{ group.domains|length }} 类</span>
+          </div>
+          <div class="check-grid">
+            {% for d in group.domains %}
+              <label class="check-pill">
+                <input type="checkbox" name="domain_key" value="{{ d.key }}">
+                {{ d.label }}（{{ d.count }}）
+              </label>
+            {% else %}
+              <span class="muted">暂无题目</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+      <p class="muted">不选择领域时默认所选来源下全部领域。</p>
     </div>
 
     <div class="form-group">

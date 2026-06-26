@@ -315,6 +315,15 @@ a:hover {
   border-color: var(--accent);
 }
 
+.domain-chip-disabled,
+.domain-chip-disabled:hover {
+  color: var(--muted);
+  cursor: default;
+  border-style: dashed;
+  transform: none;
+  box-shadow: none;
+}
+
 .domain-name {
   font-weight: 700;
   color: var(--ink);
@@ -788,9 +797,60 @@ button,
 
 .filter-form {
   display: grid;
-  grid-template-columns: auto minmax(120px, .8fr) auto minmax(120px, .8fr) auto minmax(150px, 1fr) auto minmax(200px, 1.2fr) auto auto;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 10px;
   align-items: end;
+}
+
+.filter-fieldset {
+  grid-column: span 2;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.filter-fieldset legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.check-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.check-pill input {
+  margin: 0;
+}
+
+.check-pill.disabled {
+  color: var(--muted);
+  border-style: dashed;
+  opacity: .75;
+}
+
+.compact-domain-group {
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 /* Timer */

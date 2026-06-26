@@ -2,6 +2,7 @@
 import os, json, random, hashlib, re, secrets, time
 from collections import defaultdict, deque
 from datetime import datetime
+from urllib.parse import urlencode
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, abort, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -34,8 +35,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', '0') == '1'
 app.jinja_env.globals.update(enumerate=enumerate)
 
-SECURITY_ENABLED = os.environ.get('SECURITY_ENABLED', '1') != '0'
-SHARE_ACCESS_CODE = os.environ.get('SHARE_ACCESS_CODE', '').strip()
+SECURITY_ENABLED = os.environ.get('SECURITY_ENABLED', '0') != '0'
 LOCAL_AUTO_LOGIN = os.environ.get('LOCAL_AUTO_LOGIN', '1') != '0'
 LOCAL_USERNAME = os.environ.get('LOCAL_USERNAME', 'local')
 RATE_LIMITS = defaultdict(deque)
@@ -44,7 +44,7 @@ BOT_UA_PATTERNS = re.compile(
     re.I,
 )
 
-BOOK_TITLE = '《全国高级卫生专业技术资格考试指导——临床药学》2023版'
+BOOK_TITLE = '《全国高级卫生专业技术资格考试指导——医院药学》2023版'
 CHAPTER_LABELS = {
     'PHARMACOLOGY': '第二章 药理学',
     'PHARMACEUTICS': '第三章 药物制剂及临床应用',
@@ -230,6 +230,13 @@ SOURCE_TYPE_LABELS = {
     'other': '其他',
 }
 
+SOURCE_GROUP_LABELS = {
+    'hospital_pharmacy': '医院药学',
+    'clinical_pharmacy': '临床药学',
+    'guideline': '指南/共识',
+}
+SOURCE_GROUP_ORDER = {key: idx for idx, key in enumerate(SOURCE_GROUP_LABELS)}
+
 # Canonical display labels. This overlay keeps internal domain codes out of the UI.
 DOMAIN_LABELS.update({
     'ADMIN_ANTIBIOTIC': '抗菌药管理',
@@ -353,53 +360,217 @@ DOMAIN_LABELS.update({
     'THER_TRANSPLANT': '器官移植',
 })
 
-def question_source_type(question):
-    value = (question or {}).get('source_type') or ''
-    if value in SOURCE_TYPE_LABELS:
+def question_source_group(question):
+    question = question or {}
+    value = question.get('source_group') or ''
+    if value in SOURCE_GROUP_LABELS:
         return value
+
+    source_type = question.get('source_type') or ''
     domain = (question or {}).get('domain') or ''
-    if domain.startswith('GUIDE_'):
+    if source_type == 'guideline' or domain.startswith('GUIDE_'):
+        return 'guideline'
+    if source_type == 'clinical_pharmacy':
+        return 'clinical_pharmacy'
+    return 'hospital_pharmacy'
+
+def question_source_type(question):
+    group = question_source_group(question)
+    if group == 'guideline':
         return 'guideline'
     return 'textbook'
 
 def domain_label(domain):
     return DOMAIN_LABELS.get(domain, domain)
 
-def build_domain_groups(questions):
-    grouped = {}
-    for q in questions:
+def domain_filter_key(source_group, label):
+    return f'{source_group}::{label}'
+
+def question_domain_key(question):
+    domain = (question or {}).get('domain') or ''
+    return domain_filter_key(question_source_group(question), domain_label(domain))
+
+def _normalize_signature_value(value):
+    if value is None:
+        return ''
+    if isinstance(value, dict):
+        return '|'.join(f'{key}:{_normalize_signature_value(value[key])}' for key in sorted(value))
+    if isinstance(value, list):
+        return '|'.join(_normalize_signature_value(item) for item in value)
+    return re.sub(r'\s+', '', str(value)).lower()
+
+def question_duplicate_signature(question):
+    question = question or {}
+    content = question.get('content') or {}
+    answer = question.get('answer') or {}
+    parts = [
+        question.get('type', ''),
+        content.get('scenario', ''),
+        content.get('stem', ''),
+        content.get('options', []),
+        content.get('shared_options', []),
+        content.get('items', []),
+        answer.get('correct', []),
+    ]
+    return hashlib.sha1('\n'.join(_normalize_signature_value(part) for part in parts).encode('utf-8')).hexdigest()
+
+def unique_questions(questions):
+    result = []
+    seen = set()
+    for question in questions:
+        signature = question_duplicate_signature(question)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        result.append(question)
+    return result
+
+def _selected_values(values, name):
+    if not values:
+        return []
+    if hasattr(values, 'getlist'):
+        return [value for value in values.getlist(name) if value]
+    value = values.get(name) if isinstance(values, dict) else None
+    if isinstance(value, list):
+        return [item for item in value if item]
+    return [value] if value else []
+
+def selected_source_groups(values):
+    groups = [value for value in _selected_values(values, 'source_group') if value in SOURCE_GROUP_LABELS]
+    if groups:
+        return _dedupe(groups)
+
+    legacy_source = ''
+    if values:
+        legacy_source = values.get('source_type', '') if hasattr(values, 'get') else ''
+    if legacy_source == 'guideline':
+        return ['guideline']
+    if legacy_source == 'textbook':
+        return ['hospital_pharmacy']
+    return []
+
+def selected_domain_keys(values, questions=None, source_groups=None):
+    keys = _dedupe(_selected_values(values, 'domain_key'))
+    if keys:
+        return keys
+
+    legacy_domain = ''
+    if values:
+        legacy_domain = values.get('domain', '') if hasattr(values, 'get') else ''
+    if not legacy_domain or not questions:
+        return []
+
+    allowed_groups = set(source_groups or SOURCE_GROUP_LABELS.keys())
+    legacy_keys = []
+    for question in unique_questions(questions):
+        if question.get('domain') == legacy_domain and question_source_group(question) in allowed_groups:
+            legacy_keys.append(question_domain_key(question))
+    return _dedupe(legacy_keys)
+
+def filter_questions(questions, qtype='', source_groups=None, domain_keys=None, keyword=''):
+    qs = unique_questions(questions)
+    source_groups = set(source_groups or [])
+    domain_keys = set(domain_keys or [])
+
+    if qtype and qtype != 'all':
+        qs = [q for q in qs if q.get('type') == qtype]
+    if source_groups:
+        qs = [q for q in qs if question_source_group(q) in source_groups]
+    if domain_keys:
+        qs = [q for q in qs if question_domain_key(q) in domain_keys]
+    if keyword:
+        low = keyword.lower()
+        filtered = []
+        for q in qs:
+            texts = [q.get('domain', ''), q.get('subdomain', ''), domain_label(q.get('domain', ''))]
+            c = q.get('content', {})
+            if isinstance(c, dict):
+                texts.append(c.get('stem', ''))
+                texts.append(c.get('scenario', ''))
+                texts.append(' '.join(c.get('options', [])))
+                texts.append(' '.join(c.get('shared_options', [])))
+                for it in c.get('items', []):
+                    texts.append(it.get('stem', ''))
+            if any(low in t.lower() for t in texts if t):
+                filtered.append(q)
+        qs = filtered
+    return qs
+
+def build_domain_groups(questions, include_empty=True):
+    grouped = {
+        key: {
+            'key': key,
+            'label': label,
+            'count': 0,
+            'domains': {},
+        }
+        for key, label in SOURCE_GROUP_LABELS.items()
+    } if include_empty else {}
+
+    for q in unique_questions(questions):
         domain = q.get('domain')
         if not domain:
             continue
-        source_type = question_source_type(q)
-        grouped.setdefault(source_type, {})
-        grouped[source_type][domain] = grouped[source_type].get(domain, 0) + 1
+        source_group = question_source_group(q)
+        label = domain_label(domain)
+        key = domain_filter_key(source_group, label)
+        group = grouped.setdefault(source_group, {
+            'key': source_group,
+            'label': SOURCE_GROUP_LABELS.get(source_group, source_group),
+            'count': 0,
+            'domains': {},
+        })
+        entry = group['domains'].setdefault(key, {
+            'key': key,
+            'label': label,
+            'count': 0,
+            'codes': [],
+        })
+        if domain not in entry['codes']:
+            entry['codes'].append(domain)
+        entry['count'] += 1
+        group['count'] += 1
 
-    order = {'textbook': 0, 'guideline': 1, 'other': 2}
     result = []
-    for source_type in sorted(grouped, key=lambda k: (order.get(k, 99), SOURCE_TYPE_LABELS.get(k, k))):
-        domains = [
-            {'name': name, 'label': domain_label(name), 'count': count}
-            for name, count in grouped[source_type].items()
-        ]
+    for source_group in sorted(grouped, key=lambda k: (SOURCE_GROUP_ORDER.get(k, 99), SOURCE_GROUP_LABELS.get(k, k))):
+        domains = list(grouped[source_group]['domains'].values())
         domains.sort(key=lambda item: (-item['count'], item['label']))
         result.append({
-            'key': source_type,
-            'label': SOURCE_TYPE_LABELS.get(source_type, source_type),
-            'count': sum(item['count'] for item in domains),
+            'key': source_group,
+            'label': SOURCE_GROUP_LABELS.get(source_group, source_group),
+            'count': grouped[source_group]['count'],
             'domains': domains,
         })
     return result
 
-def domain_options_for_source(questions, source_type=''):
-    domains = {}
-    for q in questions:
-        if source_type and question_source_type(q) != source_type:
+def domain_options_for_filters(questions, source_groups=None):
+    source_groups = set(source_groups or [])
+    options = {}
+    for group in build_domain_groups(questions, include_empty=False):
+        if source_groups and group['key'] not in source_groups:
             continue
-        domain = q.get('domain')
-        if domain:
-            domains[domain] = domain_label(domain)
-    return [name for name, _ in sorted(domains.items(), key=lambda item: item[1])]
+        for domain in group['domains']:
+            options[domain['key']] = domain
+    return sorted(options.values(), key=lambda item: (item['label'], item['key']))
+
+def source_group_options(questions):
+    grouped = {item['key']: item for item in build_domain_groups(questions, include_empty=True)}
+    return [grouped[key] for key in SOURCE_GROUP_LABELS]
+
+def build_filtered_url(endpoint, qtype='', source_groups=None, domain_keys=None, keyword='', page=None):
+    pairs = []
+    if qtype and qtype != 'all':
+        pairs.append(('type', qtype))
+    for value in source_groups or []:
+        pairs.append(('source_group', value))
+    for value in domain_keys or []:
+        pairs.append(('domain_key', value))
+    if keyword:
+        pairs.append(('keyword', keyword))
+    if page is not None:
+        pairs.append(('page', page))
+    query = urlencode(pairs)
+    return url_for(endpoint) + (f'?{query}' if query else '')
 
 def load_questions():
     global QUESTIONS, _QUESTIONS_BY_ID, _QUESTIONS_INDEXED, _QUESTIONS_MTIME
@@ -469,11 +640,6 @@ def check_rate_limit(bucket, limit, window_seconds):
     hits.append(now)
     return True
 
-def require_share_gate():
-    if not SECURITY_ENABLED or not SHARE_ACCESS_CODE:
-        return False
-    return not session.get('share_access_ok')
-
 @app.before_request
 def security_before_request():
     endpoint = request.endpoint or ''
@@ -483,7 +649,7 @@ def security_before_request():
     if LOCAL_AUTO_LOGIN:
         if not current_user.is_authenticated:
             login_user(get_or_create_local_user())
-        if endpoint in {'login', 'guest_login', 'share_gate'}:
+        if endpoint == 'login':
             return redirect(url_for('index'))
 
     if SECURITY_ENABLED:
@@ -492,15 +658,8 @@ def security_before_request():
             abort(403)
         if not check_rate_limit('global', 240, 60):
             abort(429)
-        if endpoint in {'login', 'guest_login', 'share_gate'} and not check_rate_limit('auth', 30, 600):
+        if endpoint == 'login' and not check_rate_limit('auth', 30, 600):
             abort(429)
-
-    if SHARE_ACCESS_CODE and request.args.get('access') == SHARE_ACCESS_CODE:
-        session['share_access_ok'] = True
-        return redirect(url_for('index'))
-
-    if require_share_gate() and endpoint != 'share_gate':
-        return redirect(url_for('share_gate', next=request.full_path if request.query_string else request.path))
 
     return None
 
@@ -824,6 +983,12 @@ def _normalize_book_title(title):
     title = _clean_source_text(title)
     if not title:
         return ''
+    old_title = '\u300a\u5168\u56fd\u9ad8\u7ea7\u536b\u751f\u4e13\u4e1a\u6280\u672f\u8d44\u683c\u8003\u8bd5\u6307\u5bfc\u2014\u2014\u4e34\u5e8a\u836f\u5b66\u300b\u4e34\u5e8a\u836f\u5b66\u6574\u7406\u7248'
+    old_file_title = '\u4e34\u5e8a\u836f\u5b66_\u6b63\u6587\u4e0e\u8003\u8bd5\u5927\u7eb2_\u6574\u7406\u7248'
+    old_short_title = '\u4e34\u5e8a\u836f\u5b66\u6574\u7406\u7248'
+    title = title.replace(old_title, '《全国高级卫生专业技术资格考试指导——医院药学》医院药学整理版')
+    title = title.replace(old_file_title, '医院药学_正文与考试大纲_整理版')
+    title = title.replace(old_short_title, '医院药学整理版')
     if title.startswith('临床药学考试指导'):
         return title.replace('临床药学考试指导', BOOK_TITLE, 1)
     if title == '临床药学考试指导':
@@ -1176,6 +1341,9 @@ app.jinja_env.globals.update(
     domain_label=domain_label,
     source_type_labels=SOURCE_TYPE_LABELS,
     question_source_type=question_source_type,
+    source_group_labels=SOURCE_GROUP_LABELS,
+    question_source_group=question_source_group,
+    question_domain_key=question_domain_key,
     format_source=format_source,
     get_source_excerpt=get_source_excerpt,
     format_answer_labels=format_answer_labels,
@@ -1192,6 +1360,9 @@ def inject_template_helpers():
         'domain_label': domain_label,
         'source_type_labels': SOURCE_TYPE_LABELS,
         'question_source_type': question_source_type,
+        'source_group_labels': SOURCE_GROUP_LABELS,
+        'question_source_group': question_source_group,
+        'question_domain_key': question_domain_key,
         'type_labels': TYPE_LABELS,
         'format_source': format_source,
         'get_source_excerpt': get_source_excerpt,
@@ -1207,21 +1378,6 @@ def inject_template_helpers():
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-@app.route('/gate', methods=['GET', 'POST'])
-def share_gate():
-    if not SHARE_ACCESS_CODE:
-        return redirect(url_for('login'))
-    next_url = request.values.get('next') or url_for('index')
-    if not next_url.startswith('/'):
-        next_url = url_for('index')
-    if request.method == 'POST':
-        code = request.form.get('access_code', '').strip()
-        if secrets.compare_digest(code, SHARE_ACCESS_CODE):
-            session['share_access_ok'] = True
-            return redirect(next_url)
-        flash('访问码错误', 'danger')
-    return render_template('gate.html', next_url=next_url)
-
 @app.route('/robots.txt')
 def robots_txt():
     return Response('User-agent: *\nDisallow: /\n', mimetype='text/plain')
@@ -1229,7 +1385,7 @@ def robots_txt():
 @app.route('/')
 @login_required
 def index():
-    qs = load_questions()
+    qs = unique_questions(load_questions())
     stats = {}
     for q in qs:
         stats[q['type']] = stats.get(q['type'], 0) + 1
@@ -1239,10 +1395,10 @@ def index():
     favorite_count = Bookmark.query.filter_by(user_id=current_user.id, kind='favorite').count()
     # 按领域统计
     domain_groups = build_domain_groups(qs)
-    domain_stats = [item for group in domain_groups for item in group['domains']]
     return render_template('dashboard.html', stats=stats, type_labels=TYPE_LABELS, records=records, total=len(qs),
-                           mistake_count=mistake_count, favorite_count=favorite_count, domain_stats=domain_stats,
-                           domain_groups=domain_groups, domain_labels=DOMAIN_LABELS, source_type_labels=SOURCE_TYPE_LABELS)
+                           mistake_count=mistake_count, favorite_count=favorite_count,
+                           domain_groups=domain_groups, domain_labels=DOMAIN_LABELS,
+                           source_group_options=source_group_options(qs))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -1257,28 +1413,6 @@ def login():
             return redirect(url_for('index'))
         flash('用户名或密码错误', 'danger')
     return render_template('login.html')
-
-@app.route('/guest-login', methods=['POST'])
-def guest_login():
-    if LOCAL_AUTO_LOGIN:
-        return redirect(url_for('index'))
-    if os.environ.get('ALLOW_GUEST_LOGIN', '1') == '0':
-        flash('游客入口已关闭', 'warning')
-        return redirect(url_for('login'))
-    for _ in range(8):
-        username = 'guest_' + secrets.token_hex(4)
-        if not User.query.filter_by(username=username).first():
-            user = User(
-                username=username,
-                password_hash=generate_password_hash(secrets.token_urlsafe(18)),
-                role='guest',
-            )
-            db.session.add(user)
-            db.session.commit()
-            login_user(user)
-            return redirect(url_for('index'))
-    flash('游客账号创建失败，请稍后重试', 'warning')
-    return redirect(url_for('login'))
 
 @app.route('/healthz')
 def healthz():
@@ -1296,59 +1430,43 @@ def logout():
 @login_required
 def browse():
     qtype = request.args.get('type', '')
-    source_type = request.args.get('source_type', '')
-    domain = request.args.get('domain', '')
     keyword = request.args.get('keyword', '').strip()
     page = request.args.get('page', 1, type=int)
     per_page = 20
-    qs = load_questions()
-    if qtype:
-        qs = [q for q in qs if q['type'] == qtype]
-    if source_type:
-        qs = [q for q in qs if question_source_type(q) == source_type]
-    if domain:
-        qs = [q for q in qs if q.get('domain') == domain]
-    if keyword:
-        low = keyword.lower()
-        filtered = []
-        for q in qs:
-            texts = [q.get('domain', ''), q.get('subdomain', '')]
-            c = q.get('content', {})
-            if isinstance(c, dict):
-                texts.append(c.get('stem', ''))
-                texts.append(c.get('scenario', ''))
-                texts.append(' '.join(c.get('options', [])))
-                texts.append(' '.join(c.get('shared_options', [])))
-                for it in c.get('items', []):
-                    texts.append(it.get('stem', ''))
-            if any(low in t.lower() for t in texts if t):
-                filtered.append(q)
-        qs = filtered
+    all_questions = load_questions()
+    source_groups = selected_source_groups(request.args)
+    domain_keys = selected_domain_keys(request.args, all_questions, source_groups)
+    qs = filter_questions(all_questions, qtype=qtype, source_groups=source_groups, domain_keys=domain_keys, keyword=keyword)
     total = len(qs)
     start = (page - 1) * per_page
     end = start + per_page
     page_qs = qs[start:end]
-    all_questions = load_questions()
-    domains = domain_options_for_source(all_questions, source_type)
+    domains = domain_options_for_filters(all_questions, source_groups)
     domain_groups = build_domain_groups(all_questions)
     total_pages = (total + per_page - 1) // per_page if total else 1
+    prev_url = build_filtered_url('browse', qtype, source_groups, domain_keys, keyword, page - 1) if page > 1 else ''
+    next_url = build_filtered_url('browse', qtype, source_groups, domain_keys, keyword, page + 1) if page < total_pages else ''
     return render_template('browse.html', questions=page_qs, type_labels=TYPE_LABELS, domains=domains, qtype=qtype,
-                           source_type=source_type, domain=domain, keyword=keyword, page=page,
+                           source_groups=source_groups, domain_keys=domain_keys, keyword=keyword, page=page,
                            total_pages=total_pages, total=total, per_page=per_page, domain_labels=DOMAIN_LABELS,
-                           domain_groups=domain_groups, source_type_labels=SOURCE_TYPE_LABELS)
+                           domain_groups=domain_groups, source_group_options=source_group_options(all_questions),
+                           prev_url=prev_url, next_url=next_url)
 
 @app.route('/practice')
 @login_required
 def practice():
     qtype = request.args.get('type', '')
-    qs = load_questions()
-    if qtype:
-        qs = [q for q in qs if q['type'] == qtype]
+    all_questions = load_questions()
+    source_groups = selected_source_groups(request.args)
+    domain_keys = selected_domain_keys(request.args, all_questions, source_groups)
+    qs = filter_questions(all_questions, qtype=qtype, source_groups=source_groups, domain_keys=domain_keys)
     if not qs:
-        flash('题库为空', 'warning')
+        flash('该筛选条件下暂无题目', 'warning')
         return redirect(url_for('index'))
     q = random.choice(qs)
-    return render_template('question.html', mode='practice', question=q, type_labels=TYPE_LABELS, index=1, total=1)
+    next_practice_url = build_filtered_url('practice', qtype, source_groups, domain_keys)
+    return render_template('question.html', mode='practice', question=q, type_labels=TYPE_LABELS, index=1, total=1,
+                           next_practice_url=next_practice_url)
 
 @app.route('/practice/<qid>')
 @login_required
@@ -1357,7 +1475,8 @@ def practice_question(qid):
     if not q:
         flash('题目不存在', 'warning')
         return redirect(url_for('index'))
-    return render_template('question.html', mode='practice', question=q, type_labels=TYPE_LABELS, index=1, total=1)
+    return render_template('question.html', mode='practice', question=q, type_labels=TYPE_LABELS, index=1, total=1,
+                           next_practice_url=url_for('practice'))
 
 @app.route('/exam', methods=['GET', 'POST'])
 @login_required
@@ -1366,12 +1485,13 @@ def exam():
         qtype = request.form.get('type', 'all')
         count = int(request.form.get('count', 20))
         duration = int(request.form.get('duration', 60))  # 考试时长分钟
-        qs = load_questions()
-        if qtype != 'all':
-            qs = [q for q in qs if q['type'] == qtype]
+        all_questions = load_questions()
+        source_groups = selected_source_groups(request.form)
+        domain_keys = selected_domain_keys(request.form, all_questions, source_groups)
+        qs = filter_questions(all_questions, qtype=qtype, source_groups=source_groups, domain_keys=domain_keys)
         if not qs:
-            flash('该类型题库为空', 'warning')
-            return redirect(url_for('index'))
+            flash('该筛选条件下暂无题目', 'warning')
+            return redirect(url_for('exam'))
         count = min(count, len(qs))
         selected = random.sample(qs, count)
         exam_id = hashlib.md5(str(datetime.utcnow().timestamp()).encode()).hexdigest()[:12]
@@ -1381,7 +1501,10 @@ def exam():
         session['exam_start'] = datetime.utcnow().isoformat()
         session['exam_duration'] = duration
         return redirect(url_for('exam_question', idx=0))
-    return render_template('exam_setup.html', type_labels=TYPE_LABELS)
+    all_questions = load_questions()
+    return render_template('exam_setup.html', type_labels=TYPE_LABELS,
+                           source_group_options=source_group_options(all_questions),
+                           domain_groups=build_domain_groups(all_questions))
 
 @app.route('/exam/<int:idx>', methods=['GET', 'POST'])
 @login_required
@@ -1447,8 +1570,8 @@ def exam_result():
         type_stats[t] = type_stats.get(t, {'total': 0, 'score': 0})
         type_stats[t]['total'] += items_count
         type_stats[t]['score'] += s
-        d = q.get('domain', '未知')
-        domain_stats[d] = domain_stats.get(d, {'total': 0, 'score': 0})
+        d = question_domain_key(q)
+        domain_stats[d] = domain_stats.get(d, {'label': domain_label(q.get('domain', '未知')), 'total': 0, 'score': 0})
         domain_stats[d]['total'] += items_count
         domain_stats[d]['score'] += s
         # 自动记录错题
@@ -1465,7 +1588,7 @@ def exam_result():
     domain_breakdown = []
     for d, v in domain_stats.items():
         pct = round(v['score'] / v['total'] * 100, 1) if v['total'] else 0
-        domain_breakdown.append({'domain': d, 'total': v['total'], 'score': v['score'], 'pct': pct})
+        domain_breakdown.append({'domain': d, 'label': v.get('label', d), 'total': v['total'], 'score': v['score'], 'pct': pct})
     # save record
     details = json.dumps([{'qid': r['question']['id'], 'score': r['score'], 'ua': r['user_answer']} for r in results], ensure_ascii=False)
     rec = ExamRecord(user_id=current_user.id, mode='exam', score=score, total=total, details=details)
@@ -1549,12 +1672,23 @@ def toggle_bookmark(qid):
 @app.route('/domain_practice/<domain>')
 @login_required
 def domain_practice(domain):
-    qs = [q for q in load_questions() if q.get('domain') == domain]
+    all_questions = load_questions()
+    source_groups = []
+    domain_keys = []
+    for question in unique_questions(all_questions):
+        if question.get('domain') == domain:
+            source_groups.append(question_source_group(question))
+            domain_keys.append(question_domain_key(question))
+    source_groups = _dedupe(source_groups)
+    domain_keys = _dedupe(domain_keys)
+    qs = filter_questions(all_questions, source_groups=source_groups, domain_keys=domain_keys)
     if not qs:
         flash('该领域暂无题目', 'warning')
         return redirect(url_for('index'))
     q = random.choice(qs)
-    return render_template('question.html', mode='practice', question=q, type_labels=TYPE_LABELS, index=1, total=1, domain=domain)
+    next_practice_url = build_filtered_url('practice', source_groups=source_groups, domain_keys=domain_keys)
+    return render_template('question.html', mode='practice', question=q, type_labels=TYPE_LABELS, index=1, total=1,
+                           next_practice_url=next_practice_url)
 
 @app.route('/record/<int:rid>')
 @login_required

@@ -80,10 +80,15 @@
           </div>
           <div class="domain-grid">
             {% for d in group.domains %}
-              <a href="{{ url_for('domain_practice', domain=d.name) }}" class="domain-chip">
+              <a href="{{ url_for('practice', source_group=group.key, domain_key=d.key) }}" class="domain-chip">
                 <span class="domain-name">{{ d.label }}</span>
                 <span class="domain-count">{{ d.count }} 题</span>
               </a>
+            {% else %}
+              <span class="domain-chip domain-chip-disabled">
+                <span class="domain-name">暂无题目</span>
+                <span class="domain-count">0 题</span>
+              </span>
             {% endfor %}
           </div>
         </div>
