@@ -14,12 +14,12 @@
 
 ## 题库数据
 
-本仓库包含公开版题库：`webapp/data/questions_public.json`，共 3081 题。
+本仓库包含公开版题库：`webapp/data/questions_public.json`，共 3152 题。
 
 当前分组：
 
 - 医院药学：1062 题
-- 临床药学：1421 题
+- 临床药学：1492 题
 - 指南/共识：598 题
 
 不包含以下内容：
