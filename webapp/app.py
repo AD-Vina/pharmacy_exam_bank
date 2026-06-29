@@ -979,20 +979,21 @@ def _format_pages(pages):
     pages = _dedupe([str(p) for p in _as_list(pages)])
     return '、'.join(pages)
 
-def _normalize_book_title(title):
+def _normalize_book_title(title, question=None):
     title = _clean_source_text(title)
     if not title:
         return ''
     old_title = '\u300a\u5168\u56fd\u9ad8\u7ea7\u536b\u751f\u4e13\u4e1a\u6280\u672f\u8d44\u683c\u8003\u8bd5\u6307\u5bfc\u2014\u2014\u4e34\u5e8a\u836f\u5b66\u300b\u4e34\u5e8a\u836f\u5b66\u6574\u7406\u7248'
     old_file_title = '\u4e34\u5e8a\u836f\u5b66_\u6b63\u6587\u4e0e\u8003\u8bd5\u5927\u7eb2_\u6574\u7406\u7248'
     old_short_title = '\u4e34\u5e8a\u836f\u5b66\u6574\u7406\u7248'
-    title = title.replace(old_title, '《全国高级卫生专业技术资格考试指导——医院药学》医院药学整理版')
-    title = title.replace(old_file_title, '医院药学_正文与考试大纲_整理版')
-    title = title.replace(old_short_title, '医院药学整理版')
-    if title.startswith('临床药学考试指导'):
-        return title.replace('临床药学考试指导', BOOK_TITLE, 1)
-    if title == '临床药学考试指导':
-        return BOOK_TITLE
+    if question and question_source_group(question) == 'hospital_pharmacy':
+        title = title.replace(old_title, '《全国高级卫生专业技术资格考试指导——医院药学》医院药学整理版')
+        title = title.replace(old_file_title, '医院药学_正文与考试大纲_整理版')
+        title = title.replace(old_short_title, '医院药学整理版')
+        if title.startswith('临床药学考试指导'):
+            return title.replace('临床药学考试指导', BOOK_TITLE, 1)
+        if title == '临床药学考试指导':
+            return BOOK_TITLE
     return title
 
 def _format_domain_reference(ref, question=None, pages=None):
@@ -1072,7 +1073,7 @@ def _format_source_token(token, question=None, pages=None):
     if token in _load_domain_meta():
         return _format_domain_reference(token, question, pages)
 
-    title = _normalize_book_title(token)
+    title = _normalize_book_title(token, question)
     if title and not _looks_internal_source(title):
         page_text = _format_pages(pages)
         if page_text and page_text not in title:
